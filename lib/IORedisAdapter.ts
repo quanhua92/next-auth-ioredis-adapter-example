@@ -25,6 +25,13 @@ export const defaultOptions: IORedisAdapterOptions = {
   verificationKeyPrefix: "verification:",
 };
 
+const isEmpty = (obj: any) => {
+  for (var x in obj) {
+    return false;
+  }
+  return true;
+};
+
 export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {}): Adapter {
   const currentOptions = {
     ...defaultOptions,
@@ -63,7 +70,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   const getUser = async (id: string) => {
     console.log("getUser", id);
     const user = await client.hgetall(getUserKey(id));
-    if (!user) return null;
+    if (!user || isEmpty(user)) return null;
     return { ...user } as AdapterUser;
   };
 
@@ -78,14 +85,14 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   const getAccount = async (id: string) => {
     console.log("getAccount", id);
     const account = await client.hgetall(getAccountKey(id));
-    if (!account) return null;
+    if (!account || isEmpty(account)) return null;
     return { ...account } as AdapterAccount;
   };
 
   const deleteAccount = async (id: string) => {
     const key = getAccountKey(id);
     const account = await client.hgetall(key);
-    if (!account) return null;
+    if (!account || isEmpty(account)) return null;
     await client.hdel(key);
     await client.del(getAccountByUserIdKey(account.userId));
   };
@@ -101,7 +108,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   const getSession = async (id: string) => {
     console.log("getSession id = ", id);
     const session = await client.hgetall(getSessionKey(id));
-    if (!session) return null;
+    if (!session || isEmpty(session)) return null;
     console.log("getSession", session);
     return {
       id: session.id,
@@ -126,7 +133,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   const getVerificationToken = async (id: string) => {
     const tokenKey = getVerificationKey(id);
     const token = await client.hgetall(tokenKey);
-    if (!token) return null;
+    if (!token || isEmpty(token)) return null;
     return { identifier: token.identifier, ...token } as VerificationToken;
   };
 
