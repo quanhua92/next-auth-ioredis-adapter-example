@@ -13,13 +13,11 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account, profile, email, credentials }) {
-      console.log("signIn", user, account, profile, email, credentials);
       return true;
     },
     async session({ session, token, user }) {
-      console.log("session", session, token, user);
-      //     session.user.id = user.id;
-      //     session.user.role = user.role;
+      session.user.id = user.id;
+      session.user.role = user.role || "user";
       return session;
     },
   },
@@ -27,15 +25,15 @@ export const authOptions: NextAuthOptions = {
 
 export default NextAuth(authOptions);
 
-// declare module "next-auth" {
-//   interface Session {
-//     user: User;
-//   }
-//   interface User {
-//     id: string;
-//     name?: string | null;
-//     email?: string | null;
-//     image?: string | null;
-//     role: "admin" | "moderator" | "user";
-//   }
-// }
+declare module "next-auth" {
+  interface Session {
+    user: User;
+  }
+  interface User {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    role: "admin" | "moderator" | "user";
+  }
+}

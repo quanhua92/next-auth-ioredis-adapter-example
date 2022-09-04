@@ -6,6 +6,7 @@ import styles from "../styles/Home.module.css";
 
 const ExampleComponent = () => {
   const { data: session } = useSession();
+  console.log("example component session", session);
   if (session) {
     return (
       <>

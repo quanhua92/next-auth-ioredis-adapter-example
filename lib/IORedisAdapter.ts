@@ -32,6 +32,13 @@ const isEmpty = (obj: any) => {
   return true;
 };
 
+const isoDateRE =
+  /(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d\.\d+([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))|(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d([+-][0-2]\d:[0-5]\d|Z))/;
+
+const isDate = (value: any) => {
+  return value && isoDateRE.test(value) && !isNaN(Date.parse(value));
+};
+
 export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {}): Adapter {
   const currentOptions = {
     ...defaultOptions,
@@ -59,57 +66,67 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
 
   const getVerificationKey = (tokenId: string) => verificationKeyPrefix + tokenId;
 
+  const setObjectAsHash = async (key: string, object: any) => {
+    const newObject = Object.entries(object).reduce((acc, [key, val]) => {
+      acc[key] = val instanceof Date ? val.toISOString() : val;
+      return acc;
+    }, {} as any);
+    await client.hset(key, newObject);
+  };
+
+  const loadObjectFromHash = async (key: string) => {
+    const object = await client.hgetall(key);
+    if (!object || isEmpty(object)) return null;
+    const newObject = Object.entries(object).reduce((acc, [key, val]) => {
+      acc[key] = isDate(val) ? new Date(val) : val;
+      return acc;
+    }, {} as any);
+    return newObject;
+  };
+
   const setUser = async (id: string, user: AdapterUser): Promise<AdapterUser> => {
-    console.log("setUser 1", id);
-    await client.hset(getUserKey(id), { ...user, id });
+    await setObjectAsHash(getUserKey(id), user);
     if (user.email) await client.set(getUserByEmailKey(user.email), id);
-    console.log("setUser", user);
     return user;
   };
 
   const getUser = async (id: string) => {
-    console.log("getUser", id);
-    const user = await client.hgetall(getUserKey(id));
-    if (!user || isEmpty(user)) return null;
+    const user = await loadObjectFromHash(getUserKey(id));
+    if (!user) return null;
     return { ...user } as AdapterUser;
   };
 
   const setAccount = async (id: string, account: AdapterAccount) => {
-    console.log("setAccount", id);
     const accountKey = getAccountKey(id);
-    await client.hset(accountKey, { ...account, id });
+    await setObjectAsHash(accountKey, account);
     await client.set(getAccountByUserIdKey(account.userId), accountKey);
     return account;
   };
 
   const getAccount = async (id: string) => {
-    console.log("getAccount", id);
-    const account = await client.hgetall(getAccountKey(id));
-    if (!account || isEmpty(account)) return null;
+    const account = await loadObjectFromHash(getAccountKey(id));
+    if (!account) return null;
     return { ...account } as AdapterAccount;
   };
 
   const deleteAccount = async (id: string) => {
     const key = getAccountKey(id);
-    const account = await client.hgetall(key);
-    if (!account || isEmpty(account)) return null;
+    const account = await loadObjectFromHash(key);
+    if (!account) return null;
     await client.hdel(key);
     await client.del(getAccountByUserIdKey(account.userId));
   };
 
   const setSession = async (id: string, session: AdapterSession) => {
-    console.log("setSession", session);
     const sessionKey = getSessionKey(id);
-    await client.hset(sessionKey, session);
+    await setObjectAsHash(sessionKey, session);
     await client.set(getSessionByUserIdKey(session.userId), sessionKey);
     return session;
   };
 
   const getSession = async (id: string) => {
-    console.log("getSession id = ", id);
-    const session = await client.hgetall(getSessionKey(id));
-    if (!session || isEmpty(session)) return null;
-    console.log("getSession", session);
+    const session = await loadObjectFromHash(getSessionKey(id));
+    if (!session) return null;
     return {
       id: session.id,
       ...session,
@@ -120,45 +137,41 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
     const session = await getSession(sessionToken);
     if (!session) return null;
     const key = getSessionKey(sessionToken);
-    await client.hdel(key);
+    await client.del(key);
     await client.del(getSessionByUserIdKey(session.userId));
   };
 
   const setVerificationToken = async (id: string, token: VerificationToken) => {
     const tokenKey = getVerificationKey(id);
-    await client.hset(tokenKey, { ...token, id });
+    await setObjectAsHash(tokenKey, token);
     return token;
   };
 
   const getVerificationToken = async (id: string) => {
     const tokenKey = getVerificationKey(id);
-    const token = await client.hgetall(tokenKey);
-    if (!token || isEmpty(token)) return null;
+    const token = await loadObjectFromHash(tokenKey);
+    if (!token) return null;
     return { identifier: token.identifier, ...token } as VerificationToken;
   };
 
   const deleteVerificationToken = async (id: string) => {
     const tokenKey = getVerificationKey(id);
-    await client.hdel(tokenKey);
+    await client.del(tokenKey);
   };
 
   return {
     async createUser(user) {
-      console.log("CreateUser", user);
       const id = uuid();
-      console.log("uuid", id);
       // @ts-expect-error
-      return await setUser(id, user);
+      return await setUser(id, { ...user, id });
     },
     getUser,
     async getUserByEmail(email) {
-      console.log("getUserByEmail", email);
       const userId = await client.get(getUserByEmailKey(email));
       if (!userId) return null;
       return await getUser(userId);
     },
     async getUserByAccount({ providerAccountId, provider }) {
-      console.log("getUserByAccount", providerAccountId, provider);
       const account = await getAccount(getAccountId(providerAccountId, provider));
       if (!account) return null;
       return await getUser(account.userId);
@@ -179,14 +192,14 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
         getAccountByUserIdKey(userId),
         getSessionByUserIdKey(userId)
       );
-      if (sessionKey) await client.hdel(sessionKey);
-      if (accountKey) await client.hdel(accountKey);
-      await client.hdel(getUserKey(userId));
+      if (sessionKey) await client.del(sessionKey);
+      if (accountKey) await client.del(accountKey);
+      await client.del(getUserKey(userId));
       return;
     },
     async linkAccount(account) {
       const id = getAccountId(account.providerAccountId, account.provider);
-      return await setAccount(id, account);
+      return await setAccount(id, { ...account, id });
     },
     async unlinkAccount({ providerAccountId, provider }) {
       const id = getAccountId(providerAccountId, provider);
