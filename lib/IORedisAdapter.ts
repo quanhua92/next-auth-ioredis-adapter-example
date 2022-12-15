@@ -232,7 +232,8 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
     async useVerificationToken(verificationToken) {
       const id = verificationToken.identifier;
       const token = await getVerificationToken(id);
-      if (!token) return null;
+      if (!token || verificationToken.token !== token.token)
+        return null;
       await deleteVerificationToken(id);
       return token;
     },
