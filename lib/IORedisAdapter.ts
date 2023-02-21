@@ -99,7 +99,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   const setAccount = async (id: string, account: AdapterAccount) => {
     const accountKey = getAccountKey(id);
     await setObjectAsHash(accountKey, account);
-    await client.set(getAccountByUserIdKey(account.userId), accountKey);
+    await client.set(getAccountByUserIdKey(account.userId || ""), accountKey);
     return account;
   };
 
@@ -162,7 +162,6 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
   return {
     async createUser(user) {
       const id = uuid();
-      // @ts-expect-error
       return await setUser(id, { ...user, id });
     },
     getUser,
@@ -174,7 +173,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
     async getUserByAccount({ providerAccountId, provider }) {
       const account = await getAccount(getAccountId(providerAccountId, provider));
       if (!account) return null;
-      return await getUser(account.userId);
+      return await getUser(account.userId || "");
     },
 
     async updateUser(updates) {
@@ -199,7 +198,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
     },
     async linkAccount(account) {
       const id = getAccountId(account.providerAccountId, account.provider);
-      return await setAccount(id, { ...account, id });
+      await setAccount(id, { ...account, id });
     },
     async unlinkAccount({ providerAccountId, provider }) {
       const id = getAccountId(providerAccountId, provider);
@@ -207,7 +206,7 @@ export function IORedisAdapter(client: Redis, options: IORedisAdapterOptions = {
     },
     async createSession(session) {
       const id = session.sessionToken;
-      return await setSession(id, { ...session, id });
+      return await setSession(id, { ...session, ...{id} });
     },
     async getSessionAndUser(sessionToken) {
       const id = sessionToken;
